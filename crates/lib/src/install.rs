@@ -1812,7 +1812,16 @@ async fn install_with_sysroot(
                 )?;
             }
             Bootloader::Systemd => {
-                anyhow::bail!("bootupd is required for ostree-based installs");
+                crate::bootloader::install_systemd_boot(
+                    &rootfs.device_info,
+                    &rootfs
+                        .target_root_path
+                        .clone()
+                        .unwrap_or(rootfs.physical_root_path.clone()),
+                    &state.config_opts,
+                    Some(&deployment_path.as_str()),
+                    None,
+                )?;
             }
             Bootloader::None => {
                 tracing::debug!("Skip bootloader installation due set to None");
