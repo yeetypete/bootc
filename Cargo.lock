@@ -621,7 +621,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 [[package]]
 name = "cfsctl"
 version = "0.3.0"
-source = "git+https://github.com/composefs/composefs-rs?rev=c561692#c5616929c18c2cf82dfbf807e480296721028168"
+source = "git+https://github.com/yeetypete/composefs-rs?rev=20e04db#20e04db42a2c568084f7a1c5c2315508445fad15"
 dependencies = [
  "anyhow",
  "clap",
@@ -775,7 +775,7 @@ checksum = "55b672471b4e9f9e95499ea597ff64941a309b2cdbffcc46f2cc5e2d971fd335"
 [[package]]
 name = "composefs"
 version = "0.3.0"
-source = "git+https://github.com/composefs/composefs-rs?rev=c561692#c5616929c18c2cf82dfbf807e480296721028168"
+source = "git+https://github.com/yeetypete/composefs-rs?rev=20e04db#20e04db42a2c568084f7a1c5c2315508445fad15"
 dependencies = [
  "anyhow",
  "composefs-ioctls",
@@ -797,7 +797,7 @@ dependencies = [
 [[package]]
 name = "composefs-boot"
 version = "0.3.0"
-source = "git+https://github.com/composefs/composefs-rs?rev=c561692#c5616929c18c2cf82dfbf807e480296721028168"
+source = "git+https://github.com/yeetypete/composefs-rs?rev=20e04db#20e04db42a2c568084f7a1c5c2315508445fad15"
 dependencies = [
  "anyhow",
  "composefs",
@@ -811,7 +811,7 @@ dependencies = [
 [[package]]
 name = "composefs-ioctls"
 version = "0.3.0"
-source = "git+https://github.com/composefs/composefs-rs?rev=c561692#c5616929c18c2cf82dfbf807e480296721028168"
+source = "git+https://github.com/yeetypete/composefs-rs?rev=20e04db#20e04db42a2c568084f7a1c5c2315508445fad15"
 dependencies = [
  "rustix",
  "thiserror 2.0.17",
@@ -820,7 +820,7 @@ dependencies = [
 [[package]]
 name = "composefs-oci"
 version = "0.3.0"
-source = "git+https://github.com/composefs/composefs-rs?rev=c561692#c5616929c18c2cf82dfbf807e480296721028168"
+source = "git+https://github.com/yeetypete/composefs-rs?rev=20e04db#20e04db42a2c568084f7a1c5c2315508445fad15"
 dependencies = [
  "anyhow",
  "async-compression",
