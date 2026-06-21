@@ -189,10 +189,16 @@ fn stage_bls_entry_changes(
 
         let mut new_entry = entry.clone();
 
+        // Backwards-compat migration of pre-existing entries; never (re-)arm a boot counter.
         let conf_filename = if *cfs_cmdline.digest == digest {
-            type1_entry_conf_file_name(os_id, new_entry.version(), FILENAME_PRIORITY_PRIMARY)
+            type1_entry_conf_file_name(os_id, new_entry.version(), FILENAME_PRIORITY_PRIMARY, None)
         } else {
-            type1_entry_conf_file_name(os_id, new_entry.version(), FILENAME_PRIORITY_SECONDARY)
+            type1_entry_conf_file_name(
+                os_id,
+                new_entry.version(),
+                FILENAME_PRIORITY_SECONDARY,
+                None,
+            )
         };
 
         match &mut new_entry.cfg_type {

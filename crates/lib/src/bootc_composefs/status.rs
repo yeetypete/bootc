@@ -1318,9 +1318,12 @@ mod tests {
         tempdir.create_dir_all("loader/entries")?;
 
         // Use realistic filenames as used in production
-        let filename1 = type1_entry_conf_file_name("fedora", "1.0.0", FILENAME_PRIORITY_SECONDARY);
-        let filename2 = type1_entry_conf_file_name("fedora", "2.0.0", FILENAME_PRIORITY_PRIMARY);
-        let filename3 = type1_entry_conf_file_name("fedora", "1.5.0", FILENAME_PRIORITY_PRIMARY);
+        let filename1 =
+            type1_entry_conf_file_name("fedora", "1.0.0", FILENAME_PRIORITY_SECONDARY, None);
+        let filename2 =
+            type1_entry_conf_file_name("fedora", "2.0.0", FILENAME_PRIORITY_PRIMARY, None);
+        let filename3 =
+            type1_entry_conf_file_name("fedora", "1.5.0", FILENAME_PRIORITY_PRIMARY, None);
 
         tempdir.atomic_write(format!("loader/entries/{}", filename1), entry1)?;
         tempdir.atomic_write(format!("loader/entries/{}", filename2), entry2)?;
@@ -1412,10 +1415,14 @@ mod tests {
         tempdir.create_dir_all("loader/entries")?;
 
         // Use realistic filenames - GRUB will sort by these, not sort-key
-        let filename1 =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_SECONDARY);
+        let filename1 = type1_entry_conf_file_name(
+            "fedora",
+            "41.20251125.0",
+            FILENAME_PRIORITY_SECONDARY,
+            None,
+        );
         let filename2 =
-            type1_entry_conf_file_name("fedora", "42.20251125.0", FILENAME_PRIORITY_PRIMARY);
+            type1_entry_conf_file_name("fedora", "42.20251125.0", FILENAME_PRIORITY_PRIMARY, None);
 
         tempdir.atomic_write(format!("loader/entries/{}", filename1), entry1)?;
         tempdir.atomic_write(format!("loader/entries/{}", filename2), entry2)?;

@@ -237,7 +237,8 @@ pub(crate) const SORTKEY_PRIORITY_SECONDARY: &str = "1";
 
 /// Generate BLS Type 1 entry filename compatible with Grub's RPM-style parsing.
 ///
-/// Format: `bootc_{os_id}-{version}-{priority}.conf`
+/// Format: `bootc_{os_id}-{version}-{priority}.conf`, with an optional `+{tries}` boot
+/// counter appended just before `.conf` when `boot_counter` is `Some`.
 ///
 /// Grub parses this as:
 /// - name: `bootc_{os_id}` (hyphens in os_id replaced with underscores)
@@ -246,13 +247,23 @@ pub(crate) const SORTKEY_PRIORITY_SECONDARY: &str = "1";
 ///
 /// The underscore replacement prevents Grub from mis-parsing os_id values
 /// containing hyphens (e.g., "fedora-coreos" → "fedora_coreos").
+///
+/// `boot_counter` enables systemd-boot Automatic Boot Assessment (boot counting): the
+/// `+{tries}` suffix is the initial "tries left" counter (tries-done is omitted while zero,
+/// per the Boot Loader Specification). This is only ever set for systemd-boot; Grub uses a
+/// separate grubenv mechanism and would mis-parse a counter in the filename, so Grub callers
+/// always pass `None`. See [`crate::bootc_composefs::boot_counting`].
 pub fn type1_entry_conf_file_name(
     os_id: &str,
     version: impl std::fmt::Display,
     priority: &str,
+    boot_counter: Option<u32>,
 ) -> String {
     let os_id_safe = os_id.replace('-', "_");
-    format!("bootc_{os_id_safe}-{version}-{priority}.conf")
+    match boot_counter {
+        Some(tries) => format!("bootc_{os_id_safe}-{version}-{priority}+{tries}.conf"),
+        None => format!("bootc_{os_id_safe}-{version}-{priority}.conf"),
+    }
 }
 
 /// Generate sort key for the primary (new/upgraded) boot entry.
@@ -582,6 +593,16 @@ pub(crate) fn setup_composefs_bls_boot(
 
     compute_new_kargs(mounted_erofs, current_root, &mut cmdline_refs)?;
 
+    // systemd-boot Automatic Boot Assessment (boot counting). Only systemd-boot supports the
+    // BLS filename `+N` counter; Grub uses a separate grubenv mechanism and would mis-parse a
+    // counter in the filename, so it is left untouched. The counter is read from the target
+    // image so the policy applies on both install and every upgrade.
+    let boot_counter = if matches!(bootloader, Bootloader::Systemd) {
+        crate::bootc_composefs::boot_counting::boot_counting_tries(mounted_erofs)?
+    } else {
+        None
+    };
+
     let (entry_paths, _tmpdir_guard) = match bootloader {
         Bootloader::Grub => {
             let root = Dir::open_ambient_dir(&root_path, ambient_authority())
@@ -757,14 +778,26 @@ pub(crate) fn setup_composefs_bls_boot(
     let loader_entries_dir = Dir::open_ambient_dir(&config_path, ambient_authority())
         .with_context(|| format!("Opening {config_path:?}"))?;
 
+    // The primary (new/upgraded) entry carries the boot counter when enabled; the secondary
+    // (currently-booted) entry is the known-good rollback target and is never counted.
     loader_entries_dir.atomic_write(
-        type1_entry_conf_file_name(&os_id, &bls_config.version(), FILENAME_PRIORITY_PRIMARY),
+        type1_entry_conf_file_name(
+            &os_id,
+            &bls_config.version(),
+            FILENAME_PRIORITY_PRIMARY,
+            boot_counter,
+        ),
         bls_config.to_string().as_bytes(),
     )?;
 
     if let Some(booted_bls) = booted_bls {
         loader_entries_dir.atomic_write(
-            type1_entry_conf_file_name(&os_id, &booted_bls.version(), FILENAME_PRIORITY_SECONDARY),
+            type1_entry_conf_file_name(
+                &os_id,
+                &booted_bls.version(),
+                FILENAME_PRIORITY_SECONDARY,
+                None,
+            ),
             booted_bls.to_string().as_bytes(),
         )?;
     }
@@ -1032,16 +1065,23 @@ fn write_systemd_uki_config(
         }
     };
 
+    // Boot counting is not yet wired for the UKI path (the upgrade flow does not mount the
+    // target image here); pass None until that plumbing is added.
     entries_dir
         .atomic_write(
-            type1_entry_conf_file_name(os_id, &bls_conf.version(), FILENAME_PRIORITY_PRIMARY),
+            type1_entry_conf_file_name(os_id, &bls_conf.version(), FILENAME_PRIORITY_PRIMARY, None),
             bls_conf.to_string().as_bytes(),
         )
         .context("Writing conf file")?;
 
     if let Some(booted_bls) = booted_bls {
         entries_dir.atomic_write(
-            type1_entry_conf_file_name(os_id, &booted_bls.version(), FILENAME_PRIORITY_SECONDARY),
+            type1_entry_conf_file_name(
+                os_id,
+                &booted_bls.version(),
+                FILENAME_PRIORITY_SECONDARY,
+                None,
+            ),
             booted_bls.to_string().as_bytes(),
         )?;
     }
@@ -1436,30 +1476,65 @@ mod tests {
     fn test_type1_filename_generation() {
         // Test basic os_id without hyphens
         let filename =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY);
+            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY, None);
         assert_eq!(filename, "bootc_fedora-41.20251125.0-1.conf");
 
         // Test primary vs secondary priority
         let primary =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY);
-        let secondary =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_SECONDARY);
+            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY, None);
+        let secondary = type1_entry_conf_file_name(
+            "fedora",
+            "41.20251125.0",
+            FILENAME_PRIORITY_SECONDARY,
+            None,
+        );
         assert_eq!(primary, "bootc_fedora-41.20251125.0-1.conf");
         assert_eq!(secondary, "bootc_fedora-41.20251125.0-0.conf");
 
         // Test os_id with hyphens (should be replaced with underscores)
-        let filename =
-            type1_entry_conf_file_name("fedora-coreos", "41.20251125.0", FILENAME_PRIORITY_PRIMARY);
+        let filename = type1_entry_conf_file_name(
+            "fedora-coreos",
+            "41.20251125.0",
+            FILENAME_PRIORITY_PRIMARY,
+            None,
+        );
         assert_eq!(filename, "bootc_fedora_coreos-41.20251125.0-1.conf");
 
         // Test multiple hyphens in os_id
         let filename =
-            type1_entry_conf_file_name("my-custom-os", "1.0.0", FILENAME_PRIORITY_PRIMARY);
+            type1_entry_conf_file_name("my-custom-os", "1.0.0", FILENAME_PRIORITY_PRIMARY, None);
         assert_eq!(filename, "bootc_my_custom_os-1.0.0-1.conf");
 
         // Test rhel example
-        let filename = type1_entry_conf_file_name("rhel", "9.3.0", FILENAME_PRIORITY_SECONDARY);
+        let filename =
+            type1_entry_conf_file_name("rhel", "9.3.0", FILENAME_PRIORITY_SECONDARY, None);
         assert_eq!(filename, "bootc_rhel-9.3.0-0.conf");
+    }
+
+    #[test]
+    fn test_type1_filename_boot_counter() {
+        // With a boot counter, the `+N` suffix goes immediately before `.conf`, after the
+        // grub-style release priority field. This is the systemd-boot Automatic Boot
+        // Assessment format (initial entry: tries-done omitted).
+        let primary = type1_entry_conf_file_name(
+            "fedora",
+            "41.20251125.0",
+            FILENAME_PRIORITY_PRIMARY,
+            Some(3),
+        );
+        assert_eq!(primary, "bootc_fedora-41.20251125.0-1+3.conf");
+
+        // Still ends with .conf so all readers (which filter on the suffix) keep working.
+        assert!(primary.ends_with(".conf"));
+
+        // os_id hyphens are still converted with a counter present.
+        let coreos = type1_entry_conf_file_name(
+            "fedora-coreos",
+            "41.20251125.0",
+            FILENAME_PRIORITY_PRIMARY,
+            Some(1),
+        );
+        assert_eq!(coreos, "bootc_fedora_coreos-41.20251125.0-1+1.conf");
     }
 
     #[test]
@@ -1472,7 +1547,7 @@ mod tests {
         //   - release: 1
 
         // For fedora-coreos (with hyphens), we convert to underscores
-        let filename = type1_entry_conf_file_name("fedora-coreos", "41.20251125.0", "1");
+        let filename = type1_entry_conf_file_name("fedora-coreos", "41.20251125.0", "1", None);
         assert_eq!(filename, "bootc_fedora_coreos-41.20251125.0-1.conf");
 
         // Grub parsing simulation (from right):
@@ -1511,9 +1586,13 @@ mod tests {
 
         // Test 1: Same version, different release (priority)
         let primary =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY);
-        let secondary =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_SECONDARY);
+            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY, None);
+        let secondary = type1_entry_conf_file_name(
+            "fedora",
+            "41.20251125.0",
+            FILENAME_PRIORITY_SECONDARY,
+            None,
+        );
 
         // Descending sort: "bootc_fedora-41.20251125.0-1" > "bootc_fedora-41.20251125.0-0"
         assert!(
@@ -1523,9 +1602,9 @@ mod tests {
 
         // Test 2: Different versions
         let newer =
-            type1_entry_conf_file_name("fedora", "42.20251125.0", FILENAME_PRIORITY_PRIMARY);
+            type1_entry_conf_file_name("fedora", "42.20251125.0", FILENAME_PRIORITY_PRIMARY, None);
         let older =
-            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY);
+            type1_entry_conf_file_name("fedora", "41.20251125.0", FILENAME_PRIORITY_PRIMARY, None);
 
         // Descending sort: version "42" > "41"
         assert!(
@@ -1534,8 +1613,8 @@ mod tests {
         );
 
         // Test 3: Different os_id (different name)
-        let fedora = type1_entry_conf_file_name("fedora", "41.0", FILENAME_PRIORITY_PRIMARY);
-        let rhel = type1_entry_conf_file_name("rhel", "9.0", FILENAME_PRIORITY_PRIMARY);
+        let fedora = type1_entry_conf_file_name("fedora", "41.0", FILENAME_PRIORITY_PRIMARY, None);
+        let rhel = type1_entry_conf_file_name("rhel", "9.0", FILENAME_PRIORITY_PRIMARY, None);
 
         // Names differ: bootc_rhel > bootc_fedora (descending alphabetical)
         assert!(

@@ -384,8 +384,12 @@ impl TestRoot {
         // Primary = most recent deployment
         let primary = &self.deployments[n - 1];
         let primary_conf = self.build_bls_config(primary, true);
-        let primary_fname =
-            type1_entry_conf_file_name(&primary.os_id, &primary.version, FILENAME_PRIORITY_PRIMARY);
+        let primary_fname = type1_entry_conf_file_name(
+            &primary.os_id,
+            &primary.version,
+            FILENAME_PRIORITY_PRIMARY,
+            None,
+        );
         entries_dir.atomic_write(&primary_fname, primary_conf.as_bytes())?;
 
         // Secondary = previous deployment (if exists)
@@ -396,6 +400,7 @@ impl TestRoot {
                 &secondary.os_id,
                 &secondary.version,
                 FILENAME_PRIORITY_SECONDARY,
+                None,
             );
             entries_dir.atomic_write(&secondary_fname, secondary_conf.as_bytes())?;
         }

@@ -191,7 +191,9 @@ fn rollback_composefs_entries(host: &Host, boot_dir: &Dir, bootloader: Bootloade
             FILENAME_PRIORITY_PRIMARY
         };
 
-        let file_name = type1_entry_conf_file_name(os_id, &cfg.version(), priority);
+        // A rollback is an operator-chosen promotion of a known target, so it is never
+        // boot-counted (counting is for unattended new deployments only).
+        let file_name = type1_entry_conf_file_name(os_id, &cfg.version(), priority, None);
 
         rollback_entries_dir
             .atomic_write(&file_name, cfg.to_string())
